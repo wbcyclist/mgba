@@ -531,7 +531,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
 	mCoreLoadConfig(renderer->core);
 
-	mCoreLoadFile(renderer->core, name);
+	bool romLoaded = mCoreLoadFile(renderer->core, name);
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", renderer->timestepSync);
 	mCoreConfigSetDefaultValue(&renderer->core->config, "idleOptimization", "detect");
 	renderer->core->reloadConfigOption(renderer->core, "idleOptimization", &renderer->core->config);
@@ -542,9 +542,14 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	mInputMapInit(&renderer->core->inputMap, &GBAInputInfo);
 	mDirectorySetMapOptions(&renderer->core->dirs, &renderer->core->opts);
 
-	if (savePathOverride)
-		mCoreLoadSaveFile(renderer->core, savePathOverride, false);
-	else
+	if (!romLoaded || (savePathOverride && !mCoreLoadSaveFile(renderer->core, savePathOverride, false))) {
+		mCoreConfigDeinit(&renderer->core->config);
+		mInputMapDeinit(&renderer->core->inputMap);
+		renderer->core->deinit(renderer->core);
+		renderer->core = NULL;
+		return false;
+	}
+	if (!savePathOverride)
 		mCoreAutoloadSave(renderer->core);
 
 	mCoreAutoloadCheats(renderer->core);
@@ -1125,7 +1130,8 @@ void runLoop() {
 					break;
 				};
 			}
-			if (mCoreSyncWaitFrameStart(&renderer->thread->impl->sync)) {
+			bool presented = mCoreSyncWaitFrameStart(&renderer->thread->impl->sync);
+			if (presented) {
 				unsigned w, h;
 				renderer->core->currentVideoSize(renderer->core, &w, &h);
 
@@ -1141,6 +1147,8 @@ void runLoop() {
 				renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
+			if (presented)
+				EM_ASM({ if (Module['onFramePresented']) Module['onFramePresented'](); });
 		}
 		if (renderer->showFpsCounter)
 			updateFPS();

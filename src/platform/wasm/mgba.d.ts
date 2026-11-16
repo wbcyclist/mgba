@@ -647,6 +647,9 @@ declare namespace mGBA {
      */
     filePaths(): filePaths;
 
+    /** Called on the browser thread after a single-player frame is presented. */
+    onFramePresented?: () => void;
+
     // custom variables
     readonly version: {
       readonly projectName: string;
