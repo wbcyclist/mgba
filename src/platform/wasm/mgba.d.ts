@@ -650,6 +650,9 @@ declare namespace mGBA {
     /** Called on the browser thread after a single-player frame is presented. */
     onFramePresented?: () => void;
 
+    /** Flush pending single-player GBA cartridge writes to the save file. */
+    flushGBASave(): boolean;
+
     // custom variables
     readonly version: {
       readonly projectName: string;

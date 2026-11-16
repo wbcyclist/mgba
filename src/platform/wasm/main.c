@@ -12,6 +12,7 @@
 #include <mgba/core/thread.h>
 #include <mgba/core/version.h>
 #include <mgba/gba/interface.h>
+#include <mgba/internal/gba/gba.h>
 #include <mgba/internal/gba/input.h>
 #include <mgba/internal/gba/sio.h>
 #include <mgba/internal/gba/sio/lockstep.h>
@@ -341,6 +342,17 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 
 EMSCRIPTEN_KEEPALIVE void quitMgba() {
 	exit(0);
+}
+
+EMSCRIPTEN_KEEPALIVE bool flushGBASave() {
+	if (!renderer->core || !renderer->thread || renderer->core->platform(renderer->core) != mPLATFORM_GBA)
+		return false;
+	mCoreThreadInterrupt(renderer->thread);
+	struct GBA* gba = renderer->core->board;
+	struct GBASavedata* save = &gba->memory.savedata;
+	bool result = !save->dirty || GBASavedataFlush(save);
+	mCoreThreadContinue(renderer->thread);
+	return result;
 }
 
 EMSCRIPTEN_KEEPALIVE bool autoSaveState() {

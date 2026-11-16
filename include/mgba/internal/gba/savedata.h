@@ -115,6 +115,7 @@ void GBASavedataWriteFlash(struct GBASavedata* savedata, uint16_t address, uint8
 uint16_t GBASavedataReadEEPROM(struct GBASavedata* savedata);
 void GBASavedataWriteEEPROM(struct GBASavedata* savedata, uint16_t value, uint32_t writeSize);
 
+bool GBASavedataFlush(struct GBASavedata* savedata);
 void GBASavedataClean(struct GBASavedata* savedata, uint32_t frameCount);
 
 void GBASavedataRTCRead(struct GBASavedata* savedata);

@@ -27,6 +27,8 @@ Module.loadGame = (romPath, savePathOverride) => {
   return false;
 };
 
+Module.flushGBASave = () => cwrap("flushGBASave", "boolean", [])();
+
 Module.getSave = () => {
   const exists = FS.analyzePath(Module.saveName).exists;
 

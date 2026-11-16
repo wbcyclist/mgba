@@ -583,24 +583,24 @@ uint16_t GBASavedataReadEEPROM(struct GBASavedata* savedata) {
 	return 0;
 }
 
+bool GBASavedataFlush(struct GBASavedata* savedata) {
+	if (savedata->maskWriteback)
+		GBASavedataUnmask(savedata);
+	if (!(savedata->mapMode & MAP_WRITE))
+		return true;
+	size_t size = GBASavedataSize(savedata);
+	if (savedata->data && savedata->vf && savedata->vf->sync(savedata->vf, savedata->data, size)) {
+		GBASavedataRTCWrite(savedata);
+		mLOG(GBA_SAVE, INFO, "Savedata synced");
+		return true;
+	}
+	mLOG(GBA_SAVE, INFO, "Savedata failed to sync!");
+	return false;
+}
+
 void GBASavedataClean(struct GBASavedata* savedata, uint32_t frameCount) {
-	if (!savedata->vf) {
-		return;
-	}
-	if (mSavedataClean(&savedata->dirty, &savedata->dirtAge, frameCount)) {
-		if (savedata->maskWriteback) {
-			GBASavedataUnmask(savedata);
-		}
-		if (savedata->mapMode & MAP_WRITE) {
-			size_t size = GBASavedataSize(savedata);
-			if (savedata->data && savedata->vf->sync(savedata->vf, savedata->data, size)) {
-				GBASavedataRTCWrite(savedata);
-				mLOG(GBA_SAVE, INFO, "Savedata synced");
-			} else {
-				mLOG(GBA_SAVE, INFO, "Savedata failed to sync!");
-			}
-		}
-	}
+	if (savedata->vf && mSavedataClean(&savedata->dirty, &savedata->dirtAge, frameCount))
+		GBASavedataFlush(savedata);
 }
 
 void GBASavedataRTCWrite(struct GBASavedata* savedata) {
