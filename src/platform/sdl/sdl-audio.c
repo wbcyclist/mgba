@@ -16,6 +16,50 @@ static void _mSDLAudioCallback(void* context, SDL_AudioStream* stream, int addit
 static void _mSDLAudioCallback(void* context, Uint8* data, int len);
 #endif
 
+#ifdef M_WASM_AUDIO_TEMPO
+// About 1.3 ms at 48 kHz.
+#define AUDIO_RAMP_FRAMES 64
+
+// Drop both source samples and resampled output when the audible timeline changes.
+void mWasmResetAudioOutput(struct mSDLAudio* audio) {
+	if (!audio->core) {
+		return;
+	}
+	mWasmResetAudioTempo(audio);
+	mCoreSyncLockAudio(audio->sync);
+	mAudioBufferClear(audio->core->getAudioBuffer(audio->core));
+	mCoreSyncConsumeAudio(audio->sync);
+	mAudioBufferClear(&audio->buffer);
+	audio->resampler.timestamp = 0;
+	audio->primeAudio = true;
+}
+
+static void _smoothAudioBoundary(struct mSDLAudio* audio, int16_t* pcm, int frames, bool shortRead) {
+	int channels = audio->obtainedSpec.channels;
+	for (int i = 0; i < frames && audio->fadeInRemaining; ++i) {
+		if (audio->fadeInRemaining == AUDIO_RAMP_FRAMES && !pcm[i * channels] && !pcm[i * channels + 1]) {
+			continue;
+		}
+		int gain = AUDIO_RAMP_FRAMES - audio->fadeInRemaining;
+		--audio->fadeInRemaining;
+		for (int c = 0; c < channels; ++c) {
+			pcm[i * channels + c] = pcm[i * channels + c] * gain / AUDIO_RAMP_FRAMES;
+		}
+	}
+	if (shortRead) {
+		int ramp = frames < AUDIO_RAMP_FRAMES ? frames : AUDIO_RAMP_FRAMES;
+		for (int i = 0; i < ramp; ++i) {
+			for (int c = 0; c < channels; ++c) {
+				int index = (frames - ramp + i) * channels + c;
+				pcm[index] = pcm[index] * (ramp - 1 - i) / ramp;
+			}
+		}
+		audio->primeAudio = frames == 0;
+		audio->fadeInRemaining = AUDIO_RAMP_FRAMES;
+	}
+}
+#endif
+
 bool mSDLInitAudio(struct mSDLAudio* context, struct mCoreThread* threadContext) {
 #if defined(_WIN32) && SDL_VERSION_ATLEAST(2, 0, 8)
 	if (!getenv("SDL_AUDIODRIVER")) {
@@ -53,6 +97,9 @@ bool mSDLInitAudio(struct mSDLAudio* context, struct mCoreThread* threadContext)
 		return false;
 	}
 	context->core = NULL;
+#ifdef M_WASM_AUDIO_TEMPO
+	context->primeAudio = true;
+#endif
 
 #if SDL_VERSION_ATLEAST(3, 0, 0)
 	SDL_GetAudioStreamFormat(context->stream, NULL, &context->obtainedSpec);
@@ -102,6 +149,7 @@ void mSDLPauseAudio(struct mSDLAudio* context) {
 #endif
 #ifdef M_WASM_AUDIO_TEMPO
 	mWasmResetAudioTempo(context);
+	context->primeAudio = true;
 #endif
 }
 
@@ -154,6 +202,29 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 		audioContext->sync->audioHighWater *= sampleRate / (fauxClock * audioContext->obtainedSpec.freq);
 	}
 
+#ifdef M_WASM_AUDIO_TEMPO
+	if (audioContext->speed == 1 && audioContext->primeAudio) {
+		// The GBA produces PCM in video-frame bursts. Keep one frame in reserve
+		// before starting the device's continuous stream after a discontinuity.
+		size_t deviceFrames = len / (sizeof(int16_t) * audioContext->obtainedSpec.channels);
+		double rateRatio = sampleRate / (fauxClock * audioContext->obtainedSpec.freq);
+		size_t required = (size_t) ceil(deviceFrames * rateRatio) + audioContext->resampler.highWaterMark + sampleRate / 60;
+		size_t capacity = mAudioBufferCapacity(buffer);
+		if (required > capacity) {
+			required = capacity;
+		}
+		if (audioContext->sync && audioContext->sync->audioHighWater < required) {
+			audioContext->sync->audioHighWater = required;
+		}
+		if (mAudioBufferAvailable(buffer) < required) {
+			mCoreSyncConsumeAudio(audioContext->sync);
+			memset(data, 0, len);
+			return;
+		}
+		audioContext->primeAudio = false;
+		audioContext->fadeInRemaining = AUDIO_RAMP_FRAMES;
+	}
+#endif
 	mAudioResamplerSetSource(&audioContext->resampler, buffer, sampleRate / fauxClock, true);
 	mAudioResamplerProcess(&audioContext->resampler);
 	if (audioContext->sync) {
@@ -177,6 +248,11 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 	len /= 2 * audioContext->obtainedSpec.channels;
 	int available = mAudioBufferRead(&audioContext->buffer, (int16_t*) data, len);
 
+#ifdef M_WASM_AUDIO_TEMPO
+	if (audioContext->speed == 1 && (audioContext->fadeInRemaining || available < len)) {
+		_smoothAudioBoundary(audioContext, (int16_t*) data, available, available < len);
+	}
+#endif
 	if (available < len) {
 		memset(((short*) data) + audioContext->obtainedSpec.channels * available, 0,
 		       (len - available) * audioContext->obtainedSpec.channels * sizeof(short));

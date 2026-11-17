@@ -36,6 +36,8 @@ struct mSDLAudio {
 	struct mWasmAudioTempo* tempo;
 	double speed;
 	bool preservePitch;
+	bool primeAudio;
+	unsigned fadeInRemaining;
 #endif
 
 	struct mCore* core;
@@ -43,6 +45,7 @@ struct mSDLAudio {
 };
 
 #ifdef M_WASM_AUDIO_TEMPO
+void mWasmResetAudioOutput(struct mSDLAudio*);
 void mWasmResetAudioTempo(struct mSDLAudio*);
 bool mWasmReadAudioTempo(struct mSDLAudio*, struct mAudioBuffer*, unsigned rate, double clock, int16_t* output, int frames);
 #endif

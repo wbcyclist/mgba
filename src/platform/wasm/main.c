@@ -221,7 +221,11 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 		return; // this is a percentage so more than 200% is insane.
 
 	int volume = (int) (vol * 0x100);
+	bool unmuting = volume && !renderer->volume;
 	renderer->volume = volume;
+	if (unmuting) {
+		mWasmResetAudioOutput(&renderer->audio);
+	}
 	if (linkSession && linkSession->running) {
 		for (int i = 0; i < linkSession->playerCount; ++i) {
 			struct mCore* core = linkSession->cores[i];
@@ -268,6 +272,7 @@ void updateFastForward(double multiplier) {
 	if (renderer->audio.speed != multiplier) {
 		mWasmResetAudioTempo(&renderer->audio);
 		renderer->audio.speed = multiplier;
+		renderer->audio.primeAudio = true;
 	}
 	if (linkSession && linkSession->running) {
 		for (int i = 0; i < linkSession->playerCount; ++i) {
@@ -387,16 +392,24 @@ EMSCRIPTEN_KEEPALIVE bool loadAutoSaveState() {
 	bool result = false;
 	if (renderer->core && renderer->thread) {
 		struct VDir* autosaveDir = VDirOpen("/autosave");
+		if (!autosaveDir) {
+			return false;
+		}
 		char autoSaveName[PATH_MAX + 14];
 		snprintf(autoSaveName, sizeof(autoSaveName), "%s_auto.ss", renderer->core->dirs.baseName);
 
 		struct VFile* vf = autosaveDir->openFile(autosaveDir, autoSaveName, O_RDONLY);
+		autosaveDir->close(autosaveDir);
 
 		if (!vf)
 			return false;
 
 		mCoreThreadInterrupt(renderer->thread);
 		result = mCoreLoadStateNamed(renderer->core, vf, SAVESTATE_ALL);
+		vf->close(vf);
+		if (result) {
+			mWasmResetAudioOutput(&renderer->audio);
+		}
 		mCoreThreadContinue(renderer->thread);
 		return result;
 	}
@@ -492,6 +505,9 @@ EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
 	if (renderer->core && renderer->thread) {
 		mCoreThreadInterrupt(renderer->thread);
 		result = mCoreLoadState(renderer->core, slot, SAVESTATE_ALL);
+		if (result) {
+			mWasmResetAudioOutput(&renderer->audio);
+		}
 		mCoreThreadContinue(renderer->thread);
 		return result;
 	}
