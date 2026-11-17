@@ -558,6 +558,9 @@ Module.setCoreSettings = (coreSettings) => {
       coreSettings.allowOpposingDirections,
     );
 
+  if (coreSettings.fastForwardPreservePitch !== undefined)
+    setIntegerCoreSetting("fastForwardPreservePitch", coreSettings.fastForwardPreservePitch);
+
   if (coreSettings.rewindBufferCapacity !== undefined)
     setIntegerCoreSetting(
       "rewindBufferCapacity",

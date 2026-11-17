@@ -32,9 +32,20 @@ struct mSDLAudio {
 	SDL_AudioDeviceID deviceId;
 #endif
 
+#ifdef M_WASM_AUDIO_TEMPO
+	struct mWasmAudioTempo* tempo;
+	double speed;
+	bool preservePitch;
+#endif
+
 	struct mCore* core;
 	struct mCoreSync* sync;
 };
+
+#ifdef M_WASM_AUDIO_TEMPO
+void mWasmResetAudioTempo(struct mSDLAudio*);
+bool mWasmReadAudioTempo(struct mSDLAudio*, struct mAudioBuffer*, unsigned rate, double clock, int16_t* output, int frames);
+#endif
 
 struct mCoreThread;
 bool mSDLInitAudio(struct mSDLAudio* context, struct mCoreThread*);

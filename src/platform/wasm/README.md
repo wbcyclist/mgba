@@ -145,6 +145,7 @@ Audio, timing, and speed:
 - `setMainLoopTiming(mode, value)`
 - `getFastForwardMultiplier()`
 - `setFastForwardMultiplier(multiplier)`
+  - Set `fastForwardPreservePitch: true` in the core settings to keep the pitch of game audio during fast-forward (up to 20×). Tempo follows the game. The default is off. The WASM audio output uses [Sonic](https://github.com/waywardgeek/sonic/tree/b93885dcb70aae50c6f76b0fe4e0868f029a077e) under the [Apache 2.0 license](../../third-party/sonic/LICENSE).
 - `screenshot(fileName)`
 
 Callbacks and core settings:

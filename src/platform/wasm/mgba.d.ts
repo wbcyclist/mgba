@@ -137,6 +137,9 @@ declare namespace mGBA {
      */
     rewindBufferInterval?: number;
 
+    /** Preserve the pitch of game audio during fast-forward. Defaults to false. */
+    fastForwardPreservePitch?: boolean;
+
     /**
      * Requested audio sample rate in Hz for the audio output.
      * The core will attempt to use this rate, actual output depends on

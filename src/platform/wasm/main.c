@@ -79,6 +79,7 @@ static void setLinkAudioPlayer(int player) {
 		return;
 	}
 
+	mWasmResetAudioTempo(&renderer->audio);
 	renderer->audio.core = linkSession->cores[player - 1];
 	renderer->audio.sync = &linkSession->threads[player - 1]->impl->sync;
 }
@@ -264,6 +265,10 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 
 // full handling of fast forward, interrupts and thread logic included
 void updateFastForward(double multiplier) {
+	if (renderer->audio.speed != multiplier) {
+		mWasmResetAudioTempo(&renderer->audio);
+		renderer->audio.speed = multiplier;
+	}
 	if (linkSession && linkSession->running) {
 		for (int i = 0; i < linkSession->playerCount; ++i) {
 			struct mCore* core = linkSession->cores[i];
@@ -864,6 +869,11 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 	// set renderer settings
 	if (strcmp(settingName, "audioSampleRate") == 0 && value >= 0) {
 		renderer->audio.sampleRate = value;
+	} else if (strcmp(settingName, "fastForwardPreservePitch") == 0) {
+		renderer->audio.preservePitch = value != 0;
+		if (!value) {
+			mWasmResetAudioTempo(&renderer->audio);
+		}
 	} else if (strcmp(settingName, "audioBufferSize") == 0 && value >= 0) {
 		renderer->audio.samples = value;
 	} else if (strcmp(settingName, "videoSync") == 0 && (value == true || value == false)) {

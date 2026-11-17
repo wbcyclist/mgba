@@ -83,6 +83,9 @@ void mSDLDeinitAudio(struct mSDLAudio* context) {
 	SDL_PauseAudio(1);
 	SDL_CloseAudio();
 #endif
+#ifdef M_WASM_AUDIO_TEMPO
+	mWasmResetAudioTempo(context);
+#endif
 	mAudioBufferDeinit(&context->buffer);
 	mAudioResamplerDeinit(&context->resampler);
 	SDL_QuitSubSystem(SDL_INIT_AUDIO);
@@ -96,6 +99,9 @@ void mSDLPauseAudio(struct mSDLAudio* context) {
 #else
 	UNUSED(context);
 	SDL_PauseAudio(1);
+#endif
+#ifdef M_WASM_AUDIO_TEMPO
+	mWasmResetAudioTempo(context);
 #endif
 }
 
@@ -132,10 +138,16 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 		sampleRate = audioContext->core->audioSampleRate(audioContext->core);
 	}
 	double fauxClock = 1;
+	if (audioContext->sync && audioContext->sync->fpsTarget > 0) {
+		fauxClock = mCoreCalculateFramerateRatio(audioContext->core, audioContext->sync->fpsTarget);
+	}
+#ifdef M_WASM_AUDIO_TEMPO
+	if (mWasmReadAudioTempo(audioContext, buffer, sampleRate, fauxClock, (int16_t*) data,
+	                        len / (int) (sizeof(int16_t) * audioContext->obtainedSpec.channels))) {
+		return;
+	}
+#endif
 	if (audioContext->sync) {
-		if (audioContext->sync->fpsTarget > 0 && audioContext->core) {
-			fauxClock = mCoreCalculateFramerateRatio(audioContext->core, audioContext->sync->fpsTarget);
-		}
 		mCoreSyncLockAudio(audioContext->sync);
 		audioContext->sync->audioHighWater = audioContext->samples + audioContext->resampler.highWaterMark +
 		    audioContext->resampler.lowWaterMark + (audioContext->samples >> 6);
