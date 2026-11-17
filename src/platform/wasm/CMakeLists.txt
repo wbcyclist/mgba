@@ -15,7 +15,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
 	--flto \
 	-pthread \
 	--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/pre.js")
-add_executable(${BINARY_NAME}.js main.c memory.c audio-tempo.c ../../third-party/sonic/sonic.c ../sdl/sdl-audio.c ../sdl/sdl-events.c ../sdl/sdl-text.c)
+add_executable(${BINARY_NAME}.js main.c memory.c audio-queue.c audio-tempo.c ../../third-party/sonic/sonic.c ../sdl/sdl-audio.c ../sdl/sdl-events.c ../sdl/sdl-text.c)
 set_target_properties(${BINARY_NAME}.js PROPERTIES
 	COMPILE_DEFINITIONS "M_WASM_AUDIO_TEMPO;${OS_DEFINES};${FEATURE_DEFINES};${FUNCTION_DEFINES}"
 	COMPILE_OPTIONS "-s;USE_SDL=2;-pthread"

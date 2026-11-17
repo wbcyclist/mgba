@@ -289,6 +289,10 @@ declare namespace mGBA {
   }
 
   export interface mGBAEmulator extends EmscriptenModule {
+    /** Single-producer stereo PCM queue in shared WASM memory. */
+    getAudioQueue(): { counters: Int32Array; samples: Int16Array };
+    /** Enable before loading a game, or disable to return to SDL output. */
+    setFrameAudioEnabled(enable: boolean): void;
     // custom methods from preamble
     /**
      * Attempts to automatically load cheats for the currently loaded game.

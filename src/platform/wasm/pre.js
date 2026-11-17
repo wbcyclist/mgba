@@ -4,6 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+Module.setFrameAudioEnabled = (enable) => Module._setFrameAudioEnabled(enable);
+Module.getAudioQueue = () => {
+  const offset = Module._getAudioQueue();
+  const counters = new Int32Array(HEAP16.buffer, offset, 4);
+  const samples = new Int16Array(HEAP16.buffer, offset + 16, counters[3] * 2);
+  return { counters, samples };
+};
+
 Module.loadGame = (romPath, savePathOverride) => {
   const loadGame = cwrap("loadGame", "number", ["string", "string"]);
 

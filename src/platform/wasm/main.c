@@ -28,6 +28,15 @@
 
 // global renderer
 static struct mEmscriptenRenderer* renderer = NULL;
+static bool useFrameAudio;
+
+EMSCRIPTEN_KEEPALIVE void setFrameAudioEnabled(bool enable) {
+	useFrameAudio = enable;
+	if (!enable && renderer) {
+		mWasmUseAudioQueue(&renderer->audio, false);
+		renderer->audio.frameAudio = false;
+	}
+}
 
 typedef struct {
 	struct mLockstepThreadUser d;
@@ -221,11 +230,8 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 		return; // this is a percentage so more than 200% is insane.
 
 	int volume = (int) (vol * 0x100);
-	bool unmuting = volume && !renderer->volume;
+	bool changedSilence = (volume == 0) != (renderer->volume == 0);
 	renderer->volume = volume;
-	if (unmuting) {
-		mWasmResetAudioOutput(&renderer->audio);
-	}
 	if (linkSession && linkSession->running) {
 		for (int i = 0; i < linkSession->playerCount; ++i) {
 			struct mCore* core = linkSession->cores[i];
@@ -235,12 +241,12 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 			mCoreConfigSetDefaultIntValue(&core->config, "volume", volume);
 			core->reloadConfigOption(core, "volume", &core->config);
 		}
-		return;
-	}
-
-	if (renderer->core) {
+	} else if (renderer->core) {
 		mCoreConfigSetDefaultIntValue(&renderer->core->config, "volume", volume);
 		renderer->core->reloadConfigOption(renderer->core, "volume", &renderer->core->config);
+	}
+	if (changedSilence) {
+		mWasmResetAudioOutput(&renderer->audio);
 	}
 }
 
@@ -270,9 +276,11 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 // full handling of fast forward, interrupts and thread logic included
 void updateFastForward(double multiplier) {
 	if (renderer->audio.speed != multiplier) {
+		mWasmUseAudioQueue(&renderer->audio, false);
 		mWasmResetAudioTempo(&renderer->audio);
 		renderer->audio.speed = multiplier;
 		renderer->audio.primeAudio = true;
+		mWasmUseAudioQueue(&renderer->audio, true);
 	}
 	if (linkSession && linkSession->running) {
 		for (int i = 0; i < linkSession->playerCount; ++i) {
@@ -333,6 +341,7 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 		emscripten_pause_main_loop();
 		mSDLPauseAudio(&renderer->audio);
 		mSDLDeinitAudio(&renderer->audio);
+		renderer->audio.frameAudio = false;
 
 		mCoreThreadEnd(renderer->thread);
 		mCoreThreadJoin(renderer->thread);
@@ -1141,6 +1150,11 @@ void runLoop() {
 			memset(renderer->thread, 0, sizeof(struct mCoreThread));
 
 			renderer->thread->core = renderer->core;
+			renderer->audio.frameAudio = useFrameAudio && renderer->timestepSync && !renderer->audioSync;
+			if (renderer->audio.frameAudio) {
+				renderer->thread->userData = &renderer->audio;
+				renderer->thread->frameCallback = mWasmPublishAudio;
+			}
 			renderer->thread->logger.logger = &logCtx;
 			bool didFail = !mCoreThreadStart(renderer->thread);
 			if (didFail)

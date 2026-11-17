@@ -28,10 +28,11 @@ void mWasmResetAudioOutput(struct mSDLAudio* audio) {
 	mWasmResetAudioTempo(audio);
 	mCoreSyncLockAudio(audio->sync);
 	mAudioBufferClear(audio->core->getAudioBuffer(audio->core));
-	mCoreSyncConsumeAudio(audio->sync);
+	mWasmFlushAudioQueue();
 	mAudioBufferClear(&audio->buffer);
 	audio->resampler.timestamp = 0;
 	audio->primeAudio = true;
+	mCoreSyncConsumeAudio(audio->sync);
 }
 
 static void _smoothAudioBoundary(struct mSDLAudio* audio, int16_t* pcm, int frames, bool shortRead) {
@@ -139,6 +140,9 @@ void mSDLDeinitAudio(struct mSDLAudio* context) {
 }
 
 void mSDLPauseAudio(struct mSDLAudio* context) {
+#ifdef M_WASM_AUDIO_TEMPO
+	mWasmUseAudioQueue(context, false);
+#endif
 #if SDL_VERSION_ATLEAST(3, 0, 0)
 	SDL_PauseAudioStreamDevice(context->stream);
 #elif SDL_VERSION_ATLEAST(2, 0, 0)
@@ -154,6 +158,9 @@ void mSDLPauseAudio(struct mSDLAudio* context) {
 }
 
 void mSDLResumeAudio(struct mSDLAudio* context) {
+#ifdef M_WASM_AUDIO_TEMPO
+	mWasmUseAudioQueue(context, true);
+#endif
 #if SDL_VERSION_ATLEAST(3, 0, 0)
 	SDL_ResumeAudioStreamDevice(context->stream);
 #elif SDL_VERSION_ATLEAST(2, 0, 0)
@@ -190,6 +197,10 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 		fauxClock = mCoreCalculateFramerateRatio(audioContext->core, audioContext->sync->fpsTarget);
 	}
 #ifdef M_WASM_AUDIO_TEMPO
+	if (mWasmAudioQueueActive()) {
+		memset(data, 0, len);
+		return;
+	}
 	if (mWasmReadAudioTempo(audioContext, buffer, sampleRate, fauxClock, (int16_t*) data,
 	                        len / (int) (sizeof(int16_t) * audioContext->obtainedSpec.channels))) {
 		return;
