@@ -155,7 +155,7 @@ vec3 convertRgbToHcl(in vec3 rgb) {
     float c = xMax - xMin;
     float l = getColorLumosity(rgb);
     float h = mod((
-        c == 0 ? 0.0 :
+        c == 0.0 ? 0.0 :
         xMax == rgb.r ? ((rgb.g - rgb.b) / c) :
         xMax == rgb.g ? ((rgb.b - rgb.r) / c) + 2.0 :
         xMax == rgb.b ? ((rgb.r - rgb.g) / c) + 4.0 :
@@ -227,7 +227,7 @@ vec2 getPointLineDistance(
 ) {
     vec2 lineDelta = line0 - line1;
     float lineLengthSq = dot(lineDelta, lineDelta);
-    if(lineLengthSq <= 0) {
+    if(lineLengthSq <= 0.0) {
         return line0 - point;
     }
     float t = (
@@ -342,7 +342,7 @@ float getSubpixelIntensity(
         subpixelCenter,
         subpixelSizeHalf
     );
-    if(SubpixelLightGlow <= 0) {
+    if(SubpixelLightGlow <= 0.0) {
         return dot(offset, offset) <= 0.0 ? 1.0 : 0.0;
     }
     else {

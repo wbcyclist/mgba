@@ -5,6 +5,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 Module.setFrameAudioEnabled = (enable) => Module._setFrameAudioEnabled(enable);
+Module.listVideoShaders = () => FS.readdir("/shaders")
+  .filter(name => name.endsWith(".shader"))
+  .map(directory => {
+    const manifest = FS.readFile("/shaders/" + directory + "/manifest.ini", { encoding: "utf8" });
+    const name = /^name=(.+)$/m.exec(manifest)[1].trim();
+    return { id: directory.slice(0, -".shader".length), name };
+  })
+  .sort((a, b) => a.name.localeCompare(b.name));
+Module.setVideoShader = (id, canvasSelector) => {
+  const setShader = cwrap("setVideoShader", "number", ["string", "string"]);
+  return !!setShader(id ? "/shaders/" + id + ".shader" : "", canvasSelector);
+};
+Module.redrawPausedVideo = () => Module._redrawPausedVideo();
 Module.getAudioQueue = () => {
   const offset = Module._getAudioQueue();
   const counters = new Int32Array(HEAP16.buffer, offset, 4);

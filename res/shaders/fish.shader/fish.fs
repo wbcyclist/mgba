@@ -31,7 +31,7 @@ uniform float similarity_threshold;
 
 vec4 texel_fetch(sampler2D t, ivec2 c)   // because GLSL TexelFetch is not supported
   {
-    return texture2D(tex,   (2 * vec2(c) + vec2(1,1)) / (2 * texSize) );
+    return texture2D(tex,   (vec2(c) + vec2(0.5)) / texSize );
   }
 
 float pixel_brightness(vec4 pixel)
@@ -136,11 +136,11 @@ vec4 interpolate_diagonal(vec4 a, vec4 b, vec4 c, vec4 d)
 
 void main()
   {
-    ivec2 pixel_coords2 = ivec2(texCoord * texSize * 2);
+    ivec2 pixel_coords2 = ivec2(texCoord * texSize * 2.0);
     ivec2 pixel_coords = pixel_coords2 / 2;
 
-    bool x_even = mod(pixel_coords2.x,2) == 0;
-    bool y_even = mod(pixel_coords2.y,2) == 0;
+    bool x_even = mod(float(pixel_coords2.x), 2.0) == 0.0;
+    bool y_even = mod(float(pixel_coords2.y), 2.0) == 0.0;
 
     if (x_even)
       {

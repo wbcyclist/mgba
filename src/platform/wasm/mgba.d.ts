@@ -649,6 +649,15 @@ declare namespace mGBA {
      */
     setCoreSettings(coreSettings: coreSettings): void;
 
+    /** Built-in display presets with their manifest names. */
+    listVideoShaders(): { id: string; name: string }[];
+
+    /** Render single-player frames to a WebGL 2 canvas. Use an empty ID for the original output. */
+    setVideoShader(id: string, canvasSelector: string): boolean;
+
+    /** Redraw a paused game after resizing the shader canvas. */
+    redrawPausedVideo(): void;
+
     /**
      * Returns common filesystem path strings used by this build.
      */

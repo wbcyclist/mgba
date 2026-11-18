@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "main.h"
+#include "video-shader.h"
 
 #include <mgba-util/vfs.h>
 #include <mgba/core/core.h>
@@ -335,6 +336,7 @@ EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
 }
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {
+	mWasmCloseVideoShader();
 	destroyLinkSession();
 
 	if (renderer->core && renderer->thread) {
@@ -1094,6 +1096,38 @@ void updateAutoSaveState() {
 	}
 }
 
+static void presentVideoFrame(void) {
+	if (mWasmDrawVideoShader(renderer->core)) {
+		return;
+	}
+	unsigned w, h;
+	renderer->core->currentVideoSize(renderer->core, &w, &h);
+	SDL_Rect rect = { .w = w, .h = h };
+	SDL_UnlockTexture(renderer->sdlTex);
+	SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
+	if (renderer->showFpsCounter) {
+		drawFPS(w - 35, h - LINE_HEIGHT);
+	}
+	SDL_RenderPresent(renderer->sdlRenderer);
+	int stride;
+	SDL_LockTexture(renderer->sdlTex, NULL, (void**) &renderer->outputBuffer, &stride);
+	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
+}
+
+EMSCRIPTEN_KEEPALIVE void redrawPausedVideo(void) {
+	if (renderer->thread && mCoreThreadIsPaused(renderer->thread)) {
+		presentVideoFrame();
+	}
+}
+
+EMSCRIPTEN_KEEPALIVE bool setVideoShader(const char* directory, const char* canvas) {
+	if (!renderer->thread || !mWasmSetVideoShader(directory, canvas)) {
+		return false;
+	}
+	redrawPausedVideo();
+	return true;
+}
+
 // emscripten main run loop
 void runLoop() {
 	union SDL_Event event;
@@ -1184,19 +1218,7 @@ void runLoop() {
 			}
 			bool presented = mCoreSyncWaitFrameStart(&renderer->thread->impl->sync);
 			if (presented) {
-				unsigned w, h;
-				renderer->core->currentVideoSize(renderer->core, &w, &h);
-
-				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
-
-				SDL_UnlockTexture(renderer->sdlTex);
-				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
-				if (renderer->showFpsCounter)
-					drawFPS(w - 35, h - LINE_HEIGHT);
-				SDL_RenderPresent(renderer->sdlRenderer);
-				int stride;
-				SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
-				renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
+				presentVideoFrame();
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
 			if (presented)

@@ -17,9 +17,21 @@ mLOG_DEFINE_CATEGORY(OPENGL, "OpenGL", "video.ogl");
 
 #define MAX_PASSES 8
 
-static const GLchar* const _gles2Header =
+#ifdef __EMSCRIPTEN__
+// WebGL 2 needs GLSL ES 3.00 for the integer masks in hq2x and OmniScale.
+static const GLchar* const _glesVHeader =
+	"#version 300 es\nprecision highp float;\nprecision highp int;\n"
+	"#define attribute in\n#define varying out\n";
+static const GLchar* const _glesFHeader =
+	"#version 300 es\nprecision highp float;\nprecision highp int;\n"
+	"#define varying in\n#define texture2D texture\n"
+	"out vec4 compat_FragColor;\n#define gl_FragColor compat_FragColor\n";
+#else
+static const GLchar* const _glesVHeader =
 	"#version 100\n"
 	"precision mediump float;\n";
+#define _glesFHeader _glesVHeader
+#endif
 
 static const GLchar* const _gl2Header =
 	"#version 120\n";
@@ -267,6 +279,7 @@ static void mGLES2ContextDeinit(struct VideoBackend* v) {
 	mGLES2ShaderDeinit(&context->finalShader);
 	mGLES2ShaderDeinit(&context->interframeShader);
 	context->overlayShader.fbo = 0;
+	context->overlayShader.tex = 0;
 	mGLES2ShaderDeinit(&context->overlayShader);
 	free(context->initialShader.uniforms);
 }
@@ -302,8 +315,10 @@ static void mGLES2ContextResized(struct VideoBackend* v, unsigned w, unsigned h,
 	}
 	context->finalShader.dirty = true;
 	context->interframeShader.dirty = true;
-	glBindTexture(GL_TEXTURE_2D, context->finalShader.tex);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, drawW, drawH, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+	if (context->finalShader.tex) {
+		glBindTexture(GL_TEXTURE_2D, context->finalShader.tex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, drawW, drawH, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+	}
 	glBindFramebuffer(GL_FRAMEBUFFER, context->finalShader.fbo);
 	glViewport((w - drawW) / 2, (h - drawH) / 2, drawW, drawH);
 }
@@ -627,7 +642,7 @@ void mGLES2ShaderInit(struct mGLES2Shader* shader, const char* vs, const char* f
 	const GLchar* shaderBuffer[2];
 	const GLubyte* version = glGetString(GL_VERSION);
 	if (strncmp((const char*) version, "OpenGL ES ", strlen("OpenGL ES ")) == 0) {
-		shaderBuffer[0] = _gles2Header;
+		shaderBuffer[0] = _glesVHeader;
 	} else if (version[0] == '2') {
 		shaderBuffer[0] = _gl2Header;
 	} else {
@@ -642,6 +657,8 @@ void mGLES2ShaderInit(struct mGLES2Shader* shader, const char* vs, const char* f
 
 	if (shaderBuffer[0] == _gl32VHeader) {
 		shaderBuffer[0] = _gl32FHeader;
+	} else if (shaderBuffer[0] == _glesVHeader) {
+		shaderBuffer[0] = _glesFHeader;
 	}
 	if (fs) {
 		shaderBuffer[1] = fs;
@@ -668,6 +685,13 @@ void mGLES2ShaderInit(struct mGLES2Shader* shader, const char* vs, const char* f
 	if (log[0]) {
 		mLOG(OPENGL, ERROR, "%s\n", log);
 	}
+	GLint linked;
+	glGetProgramiv(shader->program, GL_LINK_STATUS, &linked);
+	if (!linked) {
+		shader->vao = -1;
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		return;
+	}
 
 	shader->texLocation = glGetUniformLocation(shader->program, "tex");
 	shader->texSizeLocation = glGetUniformLocation(shader->program, "texSize");
@@ -680,7 +704,7 @@ void mGLES2ShaderInit(struct mGLES2Shader* shader, const char* vs, const char* f
 
 #ifdef BUILD_GLES3
 	const GLubyte* extensions = glGetString(GL_EXTENSIONS);
-	if (shaderBuffer[0] == _gles2Header || version[0] >= '3' || (extensions && strstr((const char*) extensions, "_vertex_array_object") != NULL)) {
+	if (shaderBuffer[0] == _glesFHeader || version[0] >= '3' || (extensions && strstr((const char*) extensions, "_vertex_array_object") != NULL)) {
 		glGenVertexArrays(1, &shader->vao);
 		glBindVertexArray(shader->vao);
 		glEnableVertexAttribArray(shader->positionLocation);
@@ -700,6 +724,7 @@ void mGLES2ShaderDeinit(struct mGLES2Shader* shader) {
 		glDeleteTextures(1, &shader->tex);
 	}
 	glDeleteShader(shader->fragmentShader);
+	glDeleteShader(shader->vertexShader);
 	glDeleteProgram(shader->program);
 	if (shader->fbo) {
 		glDeleteFramebuffers(1, &shader->fbo);
@@ -1223,6 +1248,7 @@ void mGLES2ShaderFree(struct VideoShader* shader) {
 			free((void*) shaders[n].uniforms[u].name);
 			free((void*) shaders[n].uniforms[u].readableName);
 		}
+		free(shaders[n].uniforms);
 	}
 	free(shaders);
 	shader->passes = 0;
