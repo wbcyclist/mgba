@@ -22,6 +22,7 @@
 
 uniform sampler2D tex;
 uniform vec2 texSize;
+uniform vec2 outputSize;
 varying vec2 texCoord;
 
 uniform float lineBrightness;
@@ -29,10 +30,12 @@ uniform float lineBrightness;
 void main()
 {
 	vec4 color = texture2D(tex, texCoord);
+	float scale = outputSize.y / texSize.y;
 
-	if (int(mod(texCoord.t * texSize.y * 2.0, 2.0)) == 0)
+	// Use whole output rows so odd scales repeat the same pattern for every source row.
+	if (mod(gl_FragCoord.y, scale) < floor(scale * 0.5))
 	{
-		color.rgb *= vec3(1.0, 1.0, 1.0) * lineBrightness;
+		color.rgb *= lineBrightness;
 	}
 
 	gl_FragColor = color;
