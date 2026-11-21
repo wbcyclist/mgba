@@ -13,9 +13,10 @@ Module.listVideoShaders = () => FS.readdir("/shaders")
     return { id: directory.slice(0, -".shader".length), name };
   })
   .sort((a, b) => a.name.localeCompare(b.name));
-Module.setVideoShader = (id, canvasSelector) => {
-  const setShader = cwrap("setVideoShader", "number", ["string", "string"]);
-  return !!setShader(id ? "/shaders/" + id + ".shader" : "", canvasSelector);
+Module.setVideoShader = (id, canvasSelector, { interframeBlending = false, bilinearFiltering = false } = {}) => {
+  const setShader = cwrap("setVideoShader", "number", ["string", "string", "boolean", "boolean"]);
+  const directory = id ? "/shaders/" + id + ".shader" : id;
+  return !!setShader(directory, canvasSelector, interframeBlending, bilinearFiltering);
 };
 Module.redrawPausedVideo = () => Module._redrawPausedVideo();
 Module.getAudioQueue = () => {

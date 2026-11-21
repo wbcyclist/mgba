@@ -1096,8 +1096,8 @@ void updateAutoSaveState() {
 	}
 }
 
-static void presentVideoFrame(void) {
-	if (mWasmDrawVideoShader(renderer->core)) {
+static void presentVideoFrame(bool redraw) {
+	if (mWasmDrawVideoShader(renderer->core, redraw)) {
 		return;
 	}
 	unsigned w, h;
@@ -1116,12 +1116,12 @@ static void presentVideoFrame(void) {
 
 EMSCRIPTEN_KEEPALIVE void redrawPausedVideo(void) {
 	if (renderer->thread && mCoreThreadIsPaused(renderer->thread)) {
-		presentVideoFrame();
+		presentVideoFrame(true);
 	}
 }
 
-EMSCRIPTEN_KEEPALIVE bool setVideoShader(const char* directory, const char* canvas) {
-	if (!renderer->thread || !mWasmSetVideoShader(directory, canvas)) {
+EMSCRIPTEN_KEEPALIVE bool setVideoShader(const char* directory, const char* canvas, bool interframeBlending, bool bilinearFiltering) {
+	if (!renderer->thread || !mWasmSetVideoShader(directory, canvas, interframeBlending, bilinearFiltering)) {
 		return false;
 	}
 	redrawPausedVideo();
@@ -1218,7 +1218,7 @@ void runLoop() {
 			}
 			bool presented = mCoreSyncWaitFrameStart(&renderer->thread->impl->sync);
 			if (presented) {
-				presentVideoFrame();
+				presentVideoFrame(false);
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
 			if (presented)

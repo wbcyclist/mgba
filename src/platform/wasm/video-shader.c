@@ -35,6 +35,8 @@ static bool activateDisplay(const char* canvas) {
 	}
 	mGLES2ContextCreate(&display);
 	display.d.init(&display.d, NULL);
+	// Settings can redraw a paused image several times before the next upload.
+	display.retainInterframe = true;
 	return true;
 }
 
@@ -50,50 +52,67 @@ void mWasmCloseVideoShader(void) {
 	emscripten_webgl_make_context_current(previous);
 	emscripten_webgl_destroy_context(context);
 	context = 0;
+	memset(&display, 0, sizeof(display));
 	viewportWidth = viewportHeight = 0;
 }
 
-bool mWasmSetVideoShader(const char* directory, const char* canvas) {
-	if (!directory || !*directory) {
+static bool replacePreset(const char* directory) {
+	struct VideoShader next = {0};
+	if (*directory) {
+		struct VDir* dir = VDirOpen(directory);
+		if (!dir) {
+			return false;
+		}
+		bool ok = mGLES2ShaderLoad(&next, dir);
+		dir->close(dir);
+		// A valid manifest can still contain a program the device cannot link.
+		struct mGLES2Shader* passes = next.passes;
+		for (size_t i = 0; ok && i < next.nPasses; ++i) {
+			GLint linked = GL_FALSE;
+			glGetProgramiv(passes[i].program, GL_LINK_STATUS, &linked);
+			ok = linked == GL_TRUE;
+		}
+		if (!ok) {
+			mGLES2ShaderFree(&next);
+			return false;
+		}
+	}
+	mGLES2ShaderDetach(&display);
+	mGLES2ShaderFree(&preset);
+	preset = next;
+	mGLES2ShaderAttach(&display, preset.passes, preset.nPasses);
+	return true;
+}
+
+bool mWasmSetVideoShader(const char* directory, const char* canvas, bool interframeBlending, bool bilinearFiltering) {
+	// NULL keeps the current preset. An empty directory selects the original picture.
+	bool hasPreset = directory ? *directory != '\0' : preset.nPasses > 0;
+	if (!hasPreset && !interframeBlending && !bilinearFiltering) {
 		mWasmCloseVideoShader();
 		return true;
 	}
-	struct VDir* dir = VDirOpen(directory);
-	if (!dir) {
-		return false;
-	}
+	bool hadDisplay = context != 0;
 	EMSCRIPTEN_WEBGL_CONTEXT_HANDLE previous = emscripten_webgl_get_current_context();
 	if (!activateDisplay(canvas)) {
-		dir->close(dir);
 		return false;
 	}
-	struct VideoShader next = {0};
-	bool ok = mGLES2ShaderLoad(&next, dir);
-	dir->close(dir);
-	// A valid manifest can still contain a program the device cannot link.
-	struct mGLES2Shader* passes = next.passes;
-	for (size_t i = 0; ok && i < next.nPasses; ++i) {
-		GLint linked = GL_FALSE;
-		glGetProgramiv(passes[i].program, GL_LINK_STATUS, &linked);
-		ok = linked == GL_TRUE;
-	}
+	bool ok = !directory || replacePreset(directory);
 	if (ok) {
-		mGLES2ShaderDetach(&display);
-		mGLES2ShaderFree(&preset);
-		preset = next;
-		mGLES2ShaderAttach(&display, preset.passes, preset.nPasses);
-	} else {
-		mGLES2ShaderFree(&next);
+		if (interframeBlending && !display.d.interframeBlending) {
+			display.interframeShader.dirty = true;
+		}
+		display.d.interframeBlending = interframeBlending;
+		display.d.filter = bilinearFiltering;
 	}
 	emscripten_webgl_make_context_current(previous);
-	if (!ok && !preset.nPasses) {
+	if (!ok && !hadDisplay) {
 		mWasmCloseVideoShader();
 	}
 	return ok;
 }
 
-bool mWasmDrawVideoShader(struct mCore* core) {
-	if (!preset.nPasses) {
+bool mWasmDrawVideoShader(struct mCore* core, bool redraw) {
+	if (!context) {
 		return false;
 	}
 	EMSCRIPTEN_WEBGL_CONTEXT_HANDLE previous = emscripten_webgl_get_current_context();
@@ -102,20 +121,22 @@ bool mWasmDrawVideoShader(struct mCore* core) {
 	core->currentVideoSize(core, &w, &h);
 	int width, height;
 	emscripten_webgl_get_drawing_buffer_size(context, &width, &height);
-	if (display.width != (int) w || display.height != (int) h ||
-	    width != viewportWidth || height != viewportHeight) {
+	bool sourceResized = display.width != (int) w || display.height != (int) h;
+	if (sourceResized || width != viewportWidth || height != viewportHeight) {
 		struct mRectangle dims = { .width = w, .height = h };
 		display.d.setLayerDimensions(&display.d, VIDEO_LAYER_IMAGE, &dims);
 		display.d.contextResized(&display.d, width, height, 0, 0);
 		viewportWidth = width;
 		viewportHeight = height;
 	}
-	const void* pixels;
-	size_t stride;
-	core->getPixels(core, &pixels, &stride);
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, stride);
-	display.d.setImage(&display.d, VIDEO_LAYER_IMAGE, pixels);
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	if (!redraw || sourceResized) {
+		const void* pixels;
+		size_t stride;
+		core->getPixels(core, &pixels, &stride);
+		glPixelStorei(GL_UNPACK_ROW_LENGTH, stride);
+		display.d.setImage(&display.d, VIDEO_LAYER_IMAGE, pixels);
+		glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	}
 	display.d.drawFrame(&display.d);
 	emscripten_webgl_make_context_current(previous);
 	return true;

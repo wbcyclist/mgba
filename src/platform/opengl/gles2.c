@@ -123,6 +123,8 @@ static void mGLES2ContextInit(struct VideoBackend* v, WHandle handle) {
 	UNUSED(handle);
 	struct mGLES2Context* context = (struct mGLES2Context*) v;
 	memset(context->layerDims, 0, sizeof(context->layerDims));
+	context->retainInterframe = false;
+	context->interframeCurrent = false;
 
 	glGenTextures(VIDEO_LAYER_MAX, context->tex);
 	int i;
@@ -248,6 +250,7 @@ static void mGLES2ContextSetLayerDimensions(struct VideoBackend* v, enum VideoLa
 	struct mRectangle frame;
 	VideoBackendGetFrame(v, &frame);
 	if (frame.width != context->width || frame.height != context->height) {
+		context->interframeShader.dirty = true;
 		size_t n;
 		for (n = 0; n < context->nShaders; ++n) {
 			if (context->shaders[n].width < 0 || context->shaders[n].height < 0) {
@@ -314,7 +317,6 @@ static void mGLES2ContextResized(struct VideoBackend* v, unsigned w, unsigned h,
 		}
 	}
 	context->finalShader.dirty = true;
-	context->interframeShader.dirty = true;
 	if (context->finalShader.tex) {
 		glBindTexture(GL_TEXTURE_2D, context->finalShader.tex);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, drawW, drawH, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
@@ -460,6 +462,16 @@ static void _drawShader(struct mGLES2Context* context, struct mGLES2Shader* shad
 	_drawShaderEx(context, shader, -1);
 }
 
+static void _storeInterframeHistory(struct mGLES2Context* context) {
+	GLint viewport[4];
+	glGetIntegerv(GL_VIEWPORT, viewport);
+	glBindTexture(GL_TEXTURE_2D, context->tex[VIDEO_LAYER_IMAGE]);
+	_drawShaderEx(context, &context->initialShader, VIDEO_LAYER_IMAGE);
+	context->interframeShader.blend = false;
+	_drawShader(context, &context->interframeShader);
+	glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+}
+
 void mGLES2ContextDrawFrame(struct VideoBackend* v) {
 	struct mGLES2Context* context = (struct mGLES2Context*) v;
 	glActiveTexture(GL_TEXTURE0);
@@ -485,9 +497,14 @@ void mGLES2ContextDrawFrame(struct VideoBackend* v) {
 			continue;
 		}
 		if (v->interframeBlending) {
-			context->interframeShader.blend = true;
-			glViewport(0, 0, viewport[2], viewport[3]);
-			_drawShader(context, &context->interframeShader);
+			if (!context->interframeCurrent || context->interframeShader.dirty) {
+				// A new history texture has no previous frame to mix in.
+				context->interframeShader.blend = !context->interframeShader.dirty;
+				_drawShader(context, &context->interframeShader);
+				context->interframeCurrent = context->retainInterframe;
+			} else {
+				glBindTexture(GL_TEXTURE_2D, context->interframeShader.tex);
+			}
 		}
 	}
 
@@ -498,12 +515,8 @@ void mGLES2ContextDrawFrame(struct VideoBackend* v) {
 	}
 	glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 	_drawShader(context, &context->finalShader);
-	if (v->interframeBlending) {
-		context->interframeShader.blend = false;
-		glBindTexture(GL_TEXTURE_2D, context->tex[VIDEO_LAYER_IMAGE]);
-		_drawShaderEx(context, &context->initialShader, VIDEO_LAYER_IMAGE);
-		glViewport(0, 0, viewport[2], viewport[3]);
-		_drawShader(context, &context->interframeShader);
+	if (v->interframeBlending && !context->retainInterframe) {
+		_storeInterframeHistory(context);
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glUseProgram(0);
@@ -552,6 +565,14 @@ void mGLES2ContextPostFrame(struct VideoBackend* v, enum VideoLayer layer, const
 	struct mGLES2Context* context = (struct mGLES2Context*) v;
 	if (layer >= VIDEO_LAYER_MAX) {
 		return;
+	}
+
+	if (layer == VIDEO_LAYER_IMAGE && context->retainInterframe) {
+		if (v->interframeBlending && context->interframeCurrent && !context->interframeShader.dirty) {
+			_storeInterframeHistory(context);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
+		context->interframeCurrent = false;
 	}
 
 	int width = context->imageSizes[layer].width;

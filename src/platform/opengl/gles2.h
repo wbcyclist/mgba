@@ -92,6 +92,8 @@ struct mGLES2Context {
 	struct mGLES2Shader initialShader;
 	struct mGLES2Shader finalShader;
 	struct mGLES2Shader interframeShader;
+	bool retainInterframe;
+	bool interframeCurrent;
 	struct mGLES2Shader overlayShader;
 
 	struct mGLES2Shader* shaders;

@@ -652,8 +652,12 @@ declare namespace mGBA {
     /** Built-in display presets with their manifest names. */
     listVideoShaders(): { id: string; name: string }[];
 
-    /** Render single-player frames to a WebGL 2 canvas. Use an empty ID for the original output. */
-    setVideoShader(id: string, canvasSelector: string): boolean;
+    /** Use an empty ID for the original picture, or null to keep the current preset. */
+    setVideoShader(
+      id: string | null,
+      canvasSelector: string,
+      effects?: { interframeBlending?: boolean; bilinearFiltering?: boolean }
+    ): boolean;
 
     /** Redraw a paused game after resizing the shader canvas. */
     redrawPausedVideo(): void;

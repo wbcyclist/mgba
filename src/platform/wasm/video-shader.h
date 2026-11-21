@@ -9,8 +9,8 @@
 
 struct mCore;
 
-bool mWasmSetVideoShader(const char* directory, const char* canvas);
-bool mWasmDrawVideoShader(struct mCore* core);
+bool mWasmSetVideoShader(const char* directory, const char* canvas, bool interframeBlending, bool bilinearFiltering);
+bool mWasmDrawVideoShader(struct mCore* core, bool redraw);
 void mWasmCloseVideoShader(void);
 
 #endif
