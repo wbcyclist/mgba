@@ -33,10 +33,10 @@ void mWasmFlushAudioQueue(void) {
 }
 
 void mWasmUseAudioQueue(struct mSDLAudio* audio, bool enable) {
-	if (!audio->frameAudio || !audio->core) {
+	if (!audio->core) {
 		return;
 	}
-	enable = enable && audio->speed == 1;
+	enable = enable && audio->frameAudio && audio->speed == 1;
 	mCoreSyncLockAudio(audio->sync);
 	if (enable != atomic_load(&active)) {
 		atomic_store(&active, enable);

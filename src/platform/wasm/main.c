@@ -31,12 +31,20 @@
 static struct mEmscriptenRenderer* renderer = NULL;
 static bool useFrameAudio;
 
+static void updateFrameAudio(void) {
+	if (!renderer || !renderer->thread) {
+		return;
+	}
+	struct mSDLAudio* audio = &renderer->audio;
+	audio->frameAudio = useFrameAudio && renderer->timestepSync && !renderer->audioSync;
+	if (audio->core) {
+		mWasmUseAudioQueue(audio, SDL_GetAudioDeviceStatus(audio->deviceId) == SDL_AUDIO_PLAYING);
+	}
+}
+
 EMSCRIPTEN_KEEPALIVE void setFrameAudioEnabled(bool enable) {
 	useFrameAudio = enable;
-	if (!enable && renderer) {
-		mWasmUseAudioQueue(&renderer->audio, false);
-		renderer->audio.frameAudio = false;
-	}
+	updateFrameAudio();
 }
 
 typedef struct {
@@ -274,6 +282,16 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 	emscripten_set_main_loop_timing(mode, value);
 }
 
+static void updateSyncWaits(double multiplier) {
+	struct mCoreThread* thread = renderer->thread;
+	// At fast-forward speeds the host display cannot present every emulated frame.
+	bool fastVideo = renderer->videoSync && multiplier > 1;
+	mCoreThreadInterrupt(thread);
+	thread->impl->sync.videoFrameWait = renderer->videoSync && !fastVideo;
+	thread->impl->sync.audioWait = renderer->audioSync || fastVideo;
+	mCoreThreadContinue(thread);
+}
+
 // full handling of fast forward, interrupts and thread logic included
 void updateFastForward(double multiplier) {
 	if (renderer->audio.speed != multiplier) {
@@ -299,10 +317,7 @@ void updateFastForward(double multiplier) {
 	}
 
 	if (renderer->thread && renderer->videoSync) {
-		mCoreThreadInterrupt(renderer->thread);
-		renderer->thread->impl->sync.videoFrameWait = (multiplier > 1) ? false : renderer->videoSync;
-		renderer->thread->impl->sync.audioWait = (multiplier > 1) ? true : renderer->audioSync;
-		mCoreThreadContinue(renderer->thread);
+		updateSyncWaits(multiplier);
 	}
 
 	if (renderer->core && renderer->thread && multiplier != 0) {
@@ -907,6 +922,7 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->videoSync = value;
 	} else if (strcmp(settingName, "audioSync") == 0 && (value == true || value == false)) {
 		renderer->audioSync = value;
+		updateFrameAudio();
 	} else if (strcmp(settingName, "threadedVideo") == 0 && (value == true || value == false)) {
 		renderer->threadedVideo = value;
 	} else if (strcmp(settingName, "rewindEnable") == 0 && (value == true || value == false)) {
@@ -921,6 +937,7 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->baseFpsTarget = value;
 	} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
 		renderer->timestepSync = value;
+		updateFrameAudio();
 	} else if (strcmp(settingName, "showFpsCounter") == 0 && (value == true || value == false)) {
 		renderer->showFpsCounter = value;
 	} else if (strcmp(settingName, "autoSaveStateEnable") == 0 && (value == true || value == false)) {
@@ -991,14 +1008,9 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		}
 
 		// thread settings when running
-		if (renderer->thread && (value == true || value == false)) {
-			mCoreThreadInterrupt(renderer->thread);
-			if (strcmp(settingName, "videoSync") == 0) {
-				renderer->thread->impl->sync.videoFrameWait = value;
-			} else if (strcmp(settingName, "audioSync") == 0) {
-				renderer->thread->impl->sync.audioWait = value;
-			}
-			mCoreThreadContinue(renderer->thread);
+		if (renderer->thread && (value == true || value == false) &&
+		    (strcmp(settingName, "videoSync") == 0 || strcmp(settingName, "audioSync") == 0)) {
+			updateSyncWaits(renderer->fastForwardMultiplier);
 		}
 	}
 }
@@ -1184,11 +1196,9 @@ void runLoop() {
 			memset(renderer->thread, 0, sizeof(struct mCoreThread));
 
 			renderer->thread->core = renderer->core;
-			renderer->audio.frameAudio = useFrameAudio && renderer->timestepSync && !renderer->audioSync;
-			if (renderer->audio.frameAudio) {
-				renderer->thread->userData = &renderer->audio;
-				renderer->thread->frameCallback = mWasmPublishAudio;
-			}
+			updateFrameAudio();
+			renderer->thread->userData = &renderer->audio;
+			renderer->thread->frameCallback = mWasmPublishAudio;
 			renderer->thread->logger.logger = &logCtx;
 			bool didFail = !mCoreThreadStart(renderer->thread);
 			if (didFail)
