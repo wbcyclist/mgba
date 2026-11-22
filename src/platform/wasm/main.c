@@ -30,6 +30,13 @@
 // global renderer
 static struct mEmscriptenRenderer* renderer = NULL;
 static bool useFrameAudio;
+static bool hostDrawsFps;
+
+static void publishFpsCounter(void) {
+	if (hostDrawsFps) {
+		EM_ASM({ Module['onFpsCounter']($0 ? $1 : null); }, renderer->showFpsCounter, renderer->fpsCounter.fps);
+	}
+}
 
 static void updateFrameAudio(void) {
 	if (!renderer || !renderer->thread) {
@@ -465,6 +472,7 @@ EMSCRIPTEN_KEEPALIVE void pauseGame() {
 		mCoreThreadPause(renderer->thread);
 
 	renderer->autoSaveStateTimer.lastTime = 0;
+	renderer->fpsCounter.lastTime = 0;
 
 	emscripten_pause_main_loop();
 }
@@ -939,7 +947,11 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->timestepSync = value;
 		updateFrameAudio();
 	} else if (strcmp(settingName, "showFpsCounter") == 0 && (value == true || value == false)) {
-		renderer->showFpsCounter = value;
+		if (renderer->showFpsCounter != value) {
+			renderer->showFpsCounter = value;
+			renderer->fpsCounter = (FPSCounter) {0};
+			publishFpsCounter();
+		}
 	} else if (strcmp(settingName, "autoSaveStateEnable") == 0 && (value == true || value == false)) {
 		renderer->autoSaveStateEnable = value;
 	} else if (strcmp(settingName, "restoreAutoSaveStateOnLoad") == 0 && (value == true || value == false)) {
@@ -1048,6 +1060,7 @@ void updateFPS() {
 
 	if (renderer->fpsCounter.lastTime == 0) {
 		renderer->fpsCounter.lastTime = now;
+		renderer->fpsCounter.frames = 0;
 		return;
 	}
 
@@ -1058,10 +1071,14 @@ void updateFPS() {
 		renderer->fpsCounter.fps = (double) renderer->fpsCounter.frames * 1000.0 / elapsed;
 		renderer->fpsCounter.frames = 0;
 		renderer->fpsCounter.lastTime = now;
+		publishFpsCounter();
 	}
 }
 
 void drawFPS(unsigned x, unsigned y) {
+	if (hostDrawsFps) {
+		return;
+	}
 	char fpsBuf[32];
 	snprintf(fpsBuf, sizeof(fpsBuf), "%.1f", renderer->fpsCounter.fps);
 
@@ -1180,13 +1197,13 @@ void runLoop() {
 
 				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
 				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
-				if (renderer->showFpsCounter)
+				if (renderer->showFpsCounter) {
+					updateFPS();
 					drawFPS(w - 35, h - LINE_HEIGHT);
+				}
 				SDL_RenderPresent(renderer->sdlRenderer);
 			}
 		}
-		if (renderer->showFpsCounter)
-			updateFPS();
 		return;
 	}
 
@@ -1231,11 +1248,12 @@ void runLoop() {
 				presentVideoFrame(false);
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
-			if (presented)
+			if (presented) {
+				if (renderer->showFpsCounter)
+					updateFPS();
 				EM_ASM({ if (Module['onFramePresented']) Module['onFramePresented'](); });
+			}
 		}
-		if (renderer->showFpsCounter)
-			updateFPS();
 		if (renderer->autoSaveStateEnable)
 			updateAutoSaveState();
 	} else {
@@ -1321,6 +1339,7 @@ int main() {
 	renderer->threadedVideo = false;
 	renderer->rewindEnable = true;
 	renderer->showFpsCounter = false;
+	hostDrawsFps = EM_ASM_INT({ return typeof Module['onFpsCounter'] === 'function'; });
 	renderer->fpsCounter.lastTime = 0;
 	renderer->fpsCounter.fps = 0;
 	renderer->fpsCounter.frames = 0;

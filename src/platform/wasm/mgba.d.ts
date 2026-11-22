@@ -248,6 +248,13 @@ declare namespace mGBA {
     canvas: mGBAEmulator["canvas"];
 
     /**
+     * Draw the FPS counter in the host. Receives 0 when enabled, the measured
+     * presentation rate about once per second, and null when disabled.
+     * Without this callback, SDL draws the counter on the original picture.
+     */
+    onFpsCounter?: (fps: number | null) => void;
+
+    /**
      * Resolves URLs for the Wasm binary and other Emscripten runtime assets.
      */
     locateFile?: EmscriptenModule["locateFile"];
