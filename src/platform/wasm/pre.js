@@ -5,6 +5,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 Module.setFrameAudioEnabled = (enable) => Module._setFrameAudioEnabled(enable);
+Module.reopenAudioOutput = (context, bufferSize) => {
+  Module['audioOutputContexts'] = [Module['SDL2'].audioContext, context];
+  try {
+    return !!Module._reopenAudioOutput(context.sampleRate, bufferSize);
+  } finally {
+    delete Module['audioOutputContexts'];
+  }
+};
 Module.listVideoShaders = () => FS.readdir("/shaders")
   .filter(name => name.endsWith(".shader"))
   .map(directory => {

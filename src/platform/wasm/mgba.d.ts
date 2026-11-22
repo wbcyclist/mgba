@@ -300,6 +300,8 @@ declare namespace mGBA {
     getAudioQueue(): { counters: Int32Array; samples: Int16Array };
     /** Enable before loading a game, or disable to return to SDL output. */
     setFrameAudioEnabled(enable: boolean): void;
+    /** Reopen the running game's audio device. The caller owns both contexts. */
+    reopenAudioOutput(context: AudioContext, bufferSize: number): boolean;
     // custom methods from preamble
     /**
      * Attempts to automatically load cheats for the currently loaded game.

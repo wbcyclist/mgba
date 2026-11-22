@@ -490,6 +490,47 @@ EMSCRIPTEN_KEEPALIVE void pauseAudio() {
 	mSDLPauseAudio(&renderer->audio);
 }
 
+static bool openAudioOutput(int contextIndex, int sampleRate, int samples) {
+	EM_ASM({ Module['SDL2'].audioContext = Module['audioOutputContexts'][$0]; }, contextIndex);
+	renderer->audio.sampleRate = sampleRate;
+	renderer->audio.samples = samples;
+	renderer->core->opts.audioBuffers = samples;
+	renderer->core->setAudioBufferSize(renderer->core, samples);
+	return mSDLInitAudio(&renderer->audio, renderer->thread);
+}
+
+EMSCRIPTEN_KEEPALIVE bool reopenAudioOutput(int sampleRate, int samples) {
+	if (!renderer->thread || !renderer->audio.core || linkSession || sampleRate <= 0 ||
+	    samples < 256 || samples > 16384 || (samples & (samples - 1))) {
+		return false;
+	}
+	struct mSDLAudio* audio = &renderer->audio;
+	int oldRate = audio->sampleRate;
+	int oldSize = audio->samples;
+	bool playing = SDL_GetAudioDeviceStatus(audio->deviceId) == SDL_AUDIO_PLAYING;
+	mCoreThreadInterrupt(renderer->thread);
+	mSDLPauseAudio(audio);
+	EM_ASM({
+		const sdl = Module['SDL2'];
+		// A queued callback on the old node still holds the native device pointer.
+		sdl.audio.scriptProcessorNode.onaudioprocess = null;
+		// SDL normally closes the host's AudioContext when its last device closes.
+		sdl.audioContext = undefined;
+	});
+	mSDLDeinitAudio(audio);
+	audio->core = NULL;
+	bool opened = openAudioOutput(1, sampleRate, samples);
+	if (!opened) {
+		SDL_QuitSubSystem(SDL_INIT_AUDIO);
+		openAudioOutput(0, oldRate, oldSize);
+	}
+	if (!playing && audio->core) {
+		mSDLPauseAudio(audio);
+	}
+	mCoreThreadContinue(renderer->thread);
+	return opened;
+}
+
 EMSCRIPTEN_KEEPALIVE void resumeAudio() {
 	mSDLResumeAudio(&renderer->audio);
 }
