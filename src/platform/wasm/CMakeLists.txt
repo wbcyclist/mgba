@@ -15,10 +15,11 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
 	--flto \
 	-pthread \
 	--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/pre.js")
-add_executable(${BINARY_NAME}.js main.c memory.c video-shader.c audio-queue.c audio-tempo.c ../../third-party/sonic/sonic.c ../sdl/sdl-audio.c ../sdl/sdl-events.c ../sdl/sdl-text.c)
-set(SHADER_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../../../res/shaders")
+add_executable(${BINARY_NAME}.js main.c memory.c draw-fps.c video-shader.c audio-queue.c audio-tempo.c ../../third-party/sonic/sonic.c ../sdl/sdl-audio.c ../sdl/sdl-events.c)
+set(SHADER_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
 file(GLOB_RECURSE SHADER_FILES CONFIGURE_DEPENDS "${SHADER_DIRECTORY}/*")
-target_link_options(${BINARY_NAME}.js PRIVATE "--embed-file" "${SHADER_DIRECTORY}@/shaders")
+target_link_options(${BINARY_NAME}.js PRIVATE
+    "--preload-file" "${SHADER_DIRECTORY}@/shaders" "--exclude-file" "*/.DS_Store")
 set_target_properties(${BINARY_NAME}.js PROPERTIES
 	COMPILE_DEFINITIONS "M_WASM_AUDIO_TEMPO;${OS_DEFINES};${FEATURE_DEFINES};${FUNCTION_DEFINES}"
 	COMPILE_OPTIONS "-s;USE_SDL=2;-pthread"
@@ -27,3 +28,4 @@ set_target_properties(${BINARY_NAME}.js PROPERTIES
 target_link_libraries(${BINARY_NAME}.js ${BINARY_NAME} ${OS_LIB})
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/mgba.d.ts ${CMAKE_CURRENT_BINARY_DIR}/${BINARY_NAME}.d.ts)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/mgba.wrapper.js ${CMAKE_CURRENT_BINARY_DIR}/${BINARY_NAME}.wrapper.js)

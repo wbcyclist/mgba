@@ -317,11 +317,16 @@ static void mGLES2ContextResized(struct VideoBackend* v, unsigned w, unsigned h,
 		}
 	}
 	context->finalShader.dirty = true;
-	if (context->finalShader.tex) {
+	if (!context->retainInterframe) {
+		context->interframeShader.dirty = true;
+	}
+	if (context->finalShader.tex && context->finalShader.fbo) {
 		glBindTexture(GL_TEXTURE_2D, context->finalShader.tex);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, drawW, drawH, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, context->finalShader.fbo);
+	} else {
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
-	glBindFramebuffer(GL_FRAMEBUFFER, context->finalShader.fbo);
 	glViewport((w - drawW) / 2, (h - drawH) / 2, drawW, drawH);
 }
 

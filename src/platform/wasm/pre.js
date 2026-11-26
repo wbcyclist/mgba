@@ -137,6 +137,7 @@ Module.filePaths = () => {
     screenshotsPath: "/data/screenshots",
     patchPath: "/data/patches",
     autosave: "/autosave",
+    shaderPath: "/shaders",
   };
 };
 
@@ -650,6 +651,12 @@ Module.setCoreSettings = (coreSettings) => {
       "restoreAutoSaveStateOnLoad",
       coreSettings.restoreAutoSaveStateOnLoad,
     );
+
+  if (coreSettings.highResolutionScale !== undefined)
+    setIntegerCoreSetting(
+      "highResolutionScale",
+      coreSettings.highResolutionScale,
+    );
 };
 
 let linkLocalSession;
@@ -707,7 +714,8 @@ Module.linkLocalSetActivePlayer = (player) => {
     "number",
   ]);
   linkLocalSetActivePlayer(player);
-  const activePlayer = player === 1 ? linkLocalSession.player1 : linkLocalSession.player2;
+  const activePlayer =
+    player === 1 ? linkLocalSession.player1 : linkLocalSession.player2;
   Module.gameName = activePlayer.romPath;
   Module.saveName = activePlayer.savePath;
 };
@@ -727,4 +735,18 @@ Module.linkLocalGetStatus = () => {
     running,
     activePlayer: running ? activePlayer : undefined,
   };
+};
+
+Module.listShaders = () => {
+  return FS.readdir("/shaders/");
+};
+
+Module.loadShader = (shaderPath) => {
+  const loadShader = cwrap("loadShader", null, ["string"]);
+  loadShader(shaderPath);
+};
+
+Module.unloadShader = () => {
+  const unloadShader = cwrap("unloadShader", null, []);
+  unloadShader();
 };

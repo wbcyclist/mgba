@@ -5,6 +5,8 @@
 #include "platform/sdl/sdl-audio.h"
 #include "platform/sdl/sdl-events.h"
 
+#include "platform/opengl/gles2.h"
+
 #include <mgba/core/thread.h>
 
 typedef struct {
@@ -24,8 +26,11 @@ struct mEmscriptenRenderer {
 	mColor* outputBuffer;
 
 	SDL_Window* window;
-	SDL_Texture* sdlTex;
-	SDL_Renderer* sdlRenderer;
+	SDL_GLContext glCtx;
+	SDL_Renderer* softwareRenderer;
+	SDL_Texture* softwareTexture;
+	struct mGLES2Context gl2;
+	struct VideoShader customShader;
 	FPSCounter fpsCounter;
 	AutoSaveStateTimer autoSaveStateTimer;
 
@@ -40,6 +45,7 @@ struct mEmscriptenRenderer {
 	int baseFpsTarget;
 	int rewindBufferCapacity;
 	int rewindBufferInterval;
+	int highResolutionScale;
 	bool videoSync;
 	bool audioSync;
 	bool timestepSync;
